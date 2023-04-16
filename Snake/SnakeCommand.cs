@@ -1,11 +1,25 @@
 ﻿using Rhino;
 using Rhino.Commands;
-
+using System;
 
 namespace Snake
 {
     public class SnakeCommand : Command
     {
+        /// <summary>
+        /// Switch the Game on or off
+        /// </summary>
+        public bool SwitchedFlag { get; set; } = false;
+
+        /// <summary>
+        /// True, If game is running 
+        /// </summary>
+        public bool GamePlay { get; set; } = false;
+
+        public Game Game { get; set; }
+
+        bool altArrowNudge = Rhino.ApplicationSettings.ModelAidSettings.AltPlusArrow;
+        double nudgeAmount = Rhino.ApplicationSettings.ModelAidSettings.NudgeKeyStep;
         public SnakeCommand()
         {
             // Rhino only creates one instance of each command class defined in a
@@ -27,12 +41,41 @@ namespace Snake
 
         protected override Result RunCommand(RhinoDoc doc, RunMode mode)
         {
-            //Changes the switchedFlag, and rest will be handled in RhinoApp.Idle event
-            SnakePlugIn.Instance.SwitchedFlag = !SnakePlugIn.Instance.SwitchedFlag;
+            if (Game == null)
+            {
+                
+                Rhino.ApplicationSettings.ModelAidSettings.AltPlusArrow = false;
+                Rhino.ApplicationSettings.ModelAidSettings.NudgeKeyStep = 0;
+                Game = Game.StartGame();
 
+                RhinoApp.Idle += OnIdle;
+                
+            }
             return Result.Success;
         }
 
-        
+       
+
+        private void OnIdle(object sender, EventArgs e)
+        {
+            if (Game!=null && Game.GameOver)
+            {
+                try
+                {
+                    Game.Stop();
+                    Game.Dispose();
+
+                }
+
+                finally
+                {
+                    Game = null;
+                    RhinoApp.Idle -= OnIdle;
+                    Rhino.ApplicationSettings.ModelAidSettings.AltPlusArrow = altArrowNudge;
+                    Rhino.ApplicationSettings.ModelAidSettings.NudgeKeyStep = nudgeAmount;
+                }
+            }
+        }
+
     }
 }

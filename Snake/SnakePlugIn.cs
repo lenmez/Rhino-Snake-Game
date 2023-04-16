@@ -14,25 +14,10 @@ namespace Snake
     ///</summary>
     public class SnakePlugIn : Rhino.PlugIns.PlugIn
 
-    {
-        /// <summary>
-        /// Switch the Game on or off
-        /// </summary>
-        public bool SwitchedFlag { get; set; } = false;
-
-        /// <summary>
-        /// True, If game is running 
-        /// </summary>
-        public bool GamePlay { get; set; } = false;
-
-        public Game Game { get; set; }
-
-        bool RhinoKeyPressed { get; set; } = false;
-
+    {        
         public SnakePlugIn()
         {
             Instance = this;
-            Rhino.RhinoApp.Idle += OnIdle;
         }
 
         ///<summary>Gets the only instance of the SnakePlugIn plug-in.</summary>
@@ -45,26 +30,7 @@ namespace Snake
         // loading and shut down, add options pages to the Rhino _Option command
         // and maintain plug-in wide options in a document.
 
-        private void OnIdle(object sender, EventArgs e)
-        {
-            if(SwitchedFlag)
-            {
-                GamePlay = !GamePlay;
-            }
-
-            if(GamePlay && SwitchedFlag)
-            {
-                Game = Game.StartGame();
-                SwitchedFlag = false;
-            }
-
-            else if(!GamePlay)
-            {
-                Game.Stop();
-                SwitchedFlag = false;
-            }
-            RhinoKeyPressed = false;
-        }
+       
 
        
 

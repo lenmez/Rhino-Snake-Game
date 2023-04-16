@@ -11,7 +11,7 @@ using System.Windows.Forms;
 namespace Snake
 {
     /// <summary>
-    /// This was copied from Rhino forum and modified
+    /// Keyboard Hook, This was copied from Rhino forum and modified
     /// </summary>
     public class KeyboardListener
     {

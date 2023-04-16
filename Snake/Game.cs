@@ -4,6 +4,7 @@ using Rhino.Geometry;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Media;
@@ -14,37 +15,37 @@ using System.Windows.Forms;
 
 namespace Snake
 {
-    public class Game
+    public class Game : IDisposable
     {
         /// <summary>
         /// Keyboard listener to listen to keyboard key press events
         /// </summary>
-        private KeyboardListener keyboardListener;
+        KeyboardListener keyboardListener;
 
         /// <summary>
         /// Play each step sound when snake moves
         /// </summary>
-        public SoundPlayer StepPlayer { get; set; }
+        SoundPlayer StepPlayer { get; set; }
 
         /// <summary>
         /// Play sound when snake eats food
         /// </summary>
-        public SoundPlayer FoodPlayer { get; set; }
+        SoundPlayer FoodPlayer { get; set; }
 
         /// <summary>
         /// List of current connecting points of snake
         /// </summary>
-        public List<Point3d> SnakePoints { get; set; }
+        List<Point3d> SnakePoints { get; set; }
 
         /// <summary>
         /// Current movement diretion of snake
         /// </summary>
-        public Vector3d SnakeDirection { get; set; }
+        Vector3d SnakeDirection { get; set; }
 
         /// <summary>
         /// Boundary curve of the game
         /// </summary>
-        public Curve BoundaryCurve { get; set; }
+        Curve BoundaryCurve { get; set; }
 
         /// <summary>
         /// Solid boundary brep created from boundary curve
@@ -52,23 +53,23 @@ namespace Snake
         Brep BoundayBrep { get; set; }
 
         //Maximum and Minimum X and Y limits for the snake points
-        public double XLimitMax { get; set; } = 100;
+        double XLimitMax { get; set; } = 100;
 
-        public double YLimitMax { get; set; } = 100;
+        double YLimitMax { get; set; } = 100;
 
-        public double XLimitMin { get; set; } = -100;
+        double XLimitMin { get; set; } = -100;
 
-        public double YLimitMin { get; set; } = -100;
+        double YLimitMin { get; set; } = -100;
 
         /// <summary>
         /// Current Food point of snake
         /// </summary>
-        public Point3d Food { get; set; }
+        Point3d Food { get; set; }
 
         /// <summary>
         /// random number generator to generate coordinates for snake food point
         /// </summary>
-        public Random Random { get; set; }
+        Random Random { get; set; }
 
 
         PointDisplay PointDisplay { get; set; }
@@ -89,21 +90,20 @@ namespace Snake
         /// <summary>
         /// game speed, progressively increases as snake eats food
         /// </summary>
-        public double Speed { get; set; } = 300;
+        double Speed { get; set; } = 300;
 
         bool ChangeSpeed { get; set; } = false;
-        bool GameOver { get; set; }
-
+        public bool GameOver { get; private set; }
         public Game()
         {
             Rhino.ApplicationSettings.ModelAidSettings.NudgeKeyStep = 0;
             keyboardListener = new KeyboardListener();
             Random = new Random(25);
             SnakePoints = new List<Point3d>();
-            
+
             StepPlayer = new SoundPlayer(Properties.Resources.sfx_movement_ladder1a);
             FoodPlayer = new SoundPlayer(Properties.Resources.sfx_movement_jump19);
-            
+
             //Initial snake points
             SnakePoints.Add(new Point3d(-30, 0, 0));
             SnakePoints.Add(new Point3d(-20, 0, 0));
@@ -121,20 +121,20 @@ namespace Snake
             keyboardListener.HookKeyboard();
         }
 
-      
+
         /// <summary>
         /// Create boundary Brep for game
         /// </summary>
         public void CreateBoundaryBrep()
         {
             Curve offset = BoundaryCurve.DuplicateCurve();
-            offset.Offset(Plane.WorldXY, -10,0.001, CurveOffsetCornerStyle.None);
+            offset.Offset(Plane.WorldXY, -10, 0.001, CurveOffsetCornerStyle.None);
             offset.Scale(0.9);
-            var planarBreps = Brep.CreatePlanarBreps(new List<Curve>(){ BoundaryCurve, offset }, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance);
+            var planarBreps = Brep.CreatePlanarBreps(new List<Curve>() { BoundaryCurve, offset }, RhinoDoc.ActiveDoc.ModelAbsoluteTolerance);
             BoundayBrep = planarBreps[0];
             var offsetBrep = Brep.CreateOffsetBrep(BoundayBrep, -10, true, false, 0.001, out Brep[] blends, out Brep[] walls);
             BoundayBrep = offsetBrep[0];
-            Boundary = new BrepDisplay(new List<Brep> { offsetBrep[0] }, new DisplayMaterial(System.Drawing.Color.DarkRed, System.Drawing.Color.White, System.Drawing.Color.White, System.Drawing.Color.Black,5, 0));
+            Boundary = new BrepDisplay(new List<Brep> { offsetBrep[0] }, new DisplayMaterial(System.Drawing.Color.DarkRed, System.Drawing.Color.White, System.Drawing.Color.White, System.Drawing.Color.Black, 5, 0));
             Boundary.Enabled = true;
         }
 
@@ -146,7 +146,7 @@ namespace Snake
             int x = Random.Next(-9, 9);
             int y = Random.Next(-9, 9);
 
-            Food = new Point3d(x*10, y*10, 0);
+            Food = new Point3d(x * 10, y * 10, 0);
             if (PointDisplay == null)
             {
                 PointDisplay = new PointDisplay(Food);
@@ -177,51 +177,44 @@ namespace Snake
 
             for (int i = SnakePoints.Count - 1; i >= 0; i--)
             {
-
                 Point3d current = SnakePoints[i];
 
                 if (i == SnakePoints.Count - 1)
                 {
                     Point3d currentCopy = new Point3d(current);
                     currentCopy.Transform(Transform.Translation(SnakeDirection * 10));
-                    if (currentCopy.X >= XLimitMax)
-                        currentCopy.X = XLimitMin + 10;
-                    else if (currentCopy.X <= XLimitMin)
-                        currentCopy.X = XLimitMax - 10;
-
-                    if (currentCopy.Y >= YLimitMax)
-                        currentCopy.Y = YLimitMin + 10;
-                    else if (currentCopy.Y <= YLimitMin)
-                        currentCopy.Y = YLimitMax - 10;
+                    AdjustCoordinatesByLimit(ref currentCopy);
 
                     SnakePoints[i] = currentCopy;
 
                     if (AteFood(currentCopy))
-                    {
-                        FoodPlayer.Play();
-                        AddNewPoint();
-                        CreateFood();
-                        if(ChangeSpeed)
-                        {
-                            Timer.Interval -= 50;
-                            ChangeSpeed = false;
-                        }
-                    }
-
+                        GameLevelUp();
                     else
-                    {
                         StepPlayer.Play();
-                    }
+                    continue;
                 }
 
-
-                else
-                {
-                    SnakePoints[i] = oldList[i + 1];
-                }
-
+                SnakePoints[i] = oldList[i + 1];
             }
-            
+
+        }
+
+        /// <summary>
+        /// Compares XY coordinates of point based on given limits, and adjusts them, if they exceed
+        /// [So the snake doesnt go out of boundaries]
+        /// </summary>
+        /// <param name="point"></param>
+        void AdjustCoordinatesByLimit(ref Point3d point)
+        {
+            if (point.X >= XLimitMax)
+                point.X = XLimitMin + 10;
+            else if (point.X <= XLimitMin)
+                point.X = XLimitMax - 10;
+
+            if (point.Y >= YLimitMax)
+                point.Y = YLimitMin + 10;
+            else if (point.Y <= YLimitMin)
+                point.Y = YLimitMax - 10;
         }
 
         /// <summary>
@@ -233,12 +226,29 @@ namespace Snake
         {
             if (Math.Round(pt.DistanceTo(Food), 3) == 0)
             {
-                if (SnakePoints.Count % 2 == 0 && Speed>100)
+                if (SnakePoints.Count % 2 == 0 && Speed > 100)
                     ChangeSpeed = true;
                 return true;
-                
+
             }
             return false;
+        }
+
+        /// <summary>
+        /// Grow snake and speed up the game [When food eaten]
+        /// </summary>
+        void GameLevelUp()
+        {
+            FoodPlayer.Play();
+            AddNewPoint();
+            CreateFood();
+            if (ChangeSpeed)
+            {
+                if (Timer.Interval > 100)
+                    Timer.Interval -= 50;
+                ChangeSpeed = false;
+
+            }
         }
 
         /// <summary>
@@ -259,27 +269,11 @@ namespace Snake
                 Point3d second = SnakePoints[i + 1];
 
                 if (Math.Round(first.DistanceTo(second), 3) == 10)
-                    crvs.Add(new Line(first, second).ToNurbsCurve());
-
-                //else
-                //{
-                //    Point3d firstPointClosest = GetClosestBoundaryPoint(i, false);
-                //    Point3d secondPointClosest = GetClosestBoundaryPoint(i+1, true);
-                //    Curve firstCurve = new Line(first, firstPointClosest).ToNurbsCurve();
-                //    Curve secondCurve = new Line(second, secondPointClosest).ToNurbsCurve();
-
-                //    if (firstCurve != null)
-                //        crvs.Add(firstCurve);
-                //    if (secondCurve != null)
-                //        crvs.Add(secondCurve);
-                //}
-
+                    crvs.Add(new LineCurve(new Line(first, second)));
             }
 
             if (Coincident())
                 GameOver = true;
-
-            //Polyline pL = new Polyline(SnakePoints);
             return crvs;
         }
 
@@ -292,9 +286,9 @@ namespace Snake
             List<Brep> pipes = new List<Brep>();
             foreach (Curve c in crvs)
                 pipes.AddRange(Brep.CreatePipe(c, 2, true, PipeCapMode.Flat, true, 0.001, 0.001));
-            if(Pipe==null)
+            if (Pipe == null)
             {
-                DisplayMaterial displayMaterial = new DisplayMaterial(System.Drawing.Color.DarkGreen, System.Drawing.Color.White, System.Drawing.Color.Gray, System.Drawing.Color.Black, 5, 0.1);
+                DisplayMaterial displayMaterial = new DisplayMaterial(Color.DarkGreen, Color.White, Color.Gray, Color.Black, 5, 0.1);
                 Pipe = new BrepDisplay(pipes, displayMaterial);
                 Pipe.Enabled = true;
             }
@@ -316,65 +310,6 @@ namespace Snake
             return false;
         }
 
-        public Point3d GetClosestBoundaryPoint(int pointIndex, bool opposite)
-        {
-            Point3d point = SnakePoints[pointIndex];
-            Direction snakeDirection = GetDirection(pointIndex);
-
-            if (opposite)
-                snakeDirection = GetOppositeDirection(snakeDirection);
-
-            if (snakeDirection == Direction.Up)
-                return new Point3d(point.X, YLimitMax, 0);
-            else if (snakeDirection == Direction.Down)
-                return new Point3d(point.X, YLimitMin, 0);
-            else if (snakeDirection == Direction.Left)
-                return new Point3d(XLimitMin, point.Y, 0);
-            else
-                return new Point3d(XLimitMax, point.Y, 0);
-
-        }
-
-        public bool VectorInSameDirection(Vector3d vec1, Vector3d vec2)
-        {
-            if (Math.Round(Vector3d.VectorAngle(vec1, vec2)) == 0)
-                return true;
-            return false;
-        }
-
-        public Direction GetDirection(int pointIndex)
-        {
-            Vector3d dir;
-            if (pointIndex == SnakePoints.Count - 1)
-                dir = SnakeDirection;
-            else
-            {
-                dir = SnakePoints[pointIndex + 1] - SnakePoints[pointIndex];
-            }
-
-            if (VectorInSameDirection(dir, Plane.WorldXY.XAxis))
-                return Direction.Right;
-            else if (VectorInSameDirection(dir, Plane.WorldXY.XAxis * -1))
-                return Direction.Left;
-            else if (VectorInSameDirection(dir, Plane.WorldXY.YAxis))
-                return Direction.Up;
-            else if (VectorInSameDirection(dir, Plane.WorldXY.YAxis * -1))
-                return Direction.Down;
-            else throw new Exception();
-        }
-
-        public Direction GetOppositeDirection(Direction direction)
-        {
-            if (direction == Direction.Up)
-                return Direction.Down;
-            else if (direction == Direction.Down)
-                return Direction.Up;
-            else if (direction == Direction.Left)
-                return Direction.Right;
-            else if (direction == Direction.Right)
-                return Direction.Left;
-            else throw new Exception();
-        }
 
         /// <summary>
         /// Start the snake game
@@ -383,43 +318,48 @@ namespace Snake
         public static Game StartGame()
         {
             Game game = new Game();
-            game.CreatePipes();           
+            game.CreatePipes();
             game.Timer = new System.Timers.Timer(game.Speed);
             game.Timer.Start();
-            game.Timer.Elapsed += ElapsedHandler;              
+            game.Timer.Elapsed += ElapsedHandler;
             return game;
 
             void ElapsedHandler(object sender, ElapsedEventArgs e)
             {
-                if (game.GameOver)
+                try
                 {
-                    game.Timer.Elapsed -= ElapsedHandler;
-                    game.Stop();
-                    Snake.SnakePlugIn.Instance.SwitchedFlag = false;
-                    return;
+                    if (game.GameOver)
+                    {
+                       
+
+                        return;
+                    }
+                    if (game.DirectionChanged)
+                        game.ChangeDirection();
+                    game.MoveOneStep();
+                    game.CreatePipes();
+                    RhinoDoc.ActiveDoc.Views.ActiveView.Redraw();
                 }
-                if (game.DirectionChanged)
-                    game.ChangeDirection();
-                game.MoveOneStep();
-                // game.CurveDisplay.ChangeCurves(game.GetCurve());
-                game.CreatePipes();
-                Rhino.RhinoDoc.ActiveDoc.Views.ActiveView.Redraw();
+                catch
+                {
+                    game.Dispose();
+                }
             }
         }
 
         /// <summary>
         /// Display "Game Over" test when game is over
         /// </summary>
-        public void DisplayLost()
+        public void DisplayGameOver()
         {
             TextEntity textEntityGO = new TextEntity();
             textEntityGO.Font = new Rhino.DocObjects.Font("BANKGOTHIC MD BT");
             textEntityGO.RichText = "GAME OVER";
             textEntityGO.Translate(-Plane.WorldXY.XAxis * 80);
             textEntityGO.Translate(Plane.WorldXY.YAxis * 20);
-            Brep[] brepsGameOver = textEntityGO.CreateSurfaces(new Rhino.DocObjects.DimensionStyle() { TextHeight = 12,Font = new Rhino.DocObjects.Font("BANKGOTHIC MD BT") });
+            Brep[] brepsGameOver = textEntityGO.CreateSurfaces(new Rhino.DocObjects.DimensionStyle() { TextHeight = 12, Font = new Rhino.DocObjects.Font("BANKGOTHIC MD BT") });
             List<Brep> extrudedGO = new List<Brep>();
-            foreach(Brep brep in brepsGameOver)
+            foreach (Brep brep in brepsGameOver)
             {
                 var offsetBrep = Brep.CreateOffsetBrep(brep, -5, true, false, 0.001, out Brep[] blends, out Brep[] walls);
                 extrudedGO.Add(offsetBrep[0]);
@@ -430,7 +370,7 @@ namespace Snake
             textEntityBW.PlainText = "Back to Work now!!";
             textEntityBW.Translate(-Plane.WorldXY.XAxis * 85);
             textEntityBW.Translate(Plane.WorldXY.YAxis * -10);
-            Brep[] brepsBW = textEntityBW.CreateSurfaces(new Rhino.DocObjects.DimensionStyle() { TextHeight = 8 , Font = new Rhino.DocObjects.Font("BANKGOTHIC MD BT") });
+            Brep[] brepsBW = textEntityBW.CreateSurfaces(new Rhino.DocObjects.DimensionStyle() { TextHeight = 8, Font = new Rhino.DocObjects.Font("BANKGOTHIC MD BT") });
             List<Brep> extrudedBW = new List<Brep>();
             foreach (Brep brep in brepsBW)
             {
@@ -505,17 +445,17 @@ namespace Snake
         {
             Pipe.Enabled = false;
             PointDisplay.Enabled = false;
-            if(GameOver)
+            if (GameOver)
             {
-                
-                DisplayLost();
+                DisplayGameOver();
+                RhinoDoc.ActiveDoc.Views.Redraw();
+
                 System.Threading.Thread.Sleep(2000);
             }
             Boundary.Enabled = false;
             Timer.Stop();
             SnakePoints = null;
-            Rhino.RhinoDoc.ActiveDoc.Views.ActiveView.Redraw();
-            keyboardListener.UnHookKeyboard();
+            RhinoDoc.ActiveDoc.Views.Redraw();
         }
 
 
@@ -530,7 +470,7 @@ namespace Snake
 
                 DirectionChanged = true;
                 PressedKey = Keys.Up;
-                
+
                 return;
             }
 
@@ -567,8 +507,20 @@ namespace Snake
             else if (e.KeyCode == Keys.Escape)
             {
                 Stop();
-                SnakePlugIn.Instance.SwitchedFlag = false;
+                GameOver = true;
             }
+        }
+
+        public void Dispose()
+        {
+            GameOver = true;
+            Pipe.Enabled = false;
+            PointDisplay.Enabled = false;
+            Boundary.Enabled = false;
+            Timer.Stop();
+            Timer.Dispose();
+            SnakePoints = null;
+            keyboardListener.UnHookKeyboard();
         }
     }
 
